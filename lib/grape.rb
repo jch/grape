@@ -9,6 +9,7 @@ module Grape
   autoload :Route,           'grape/route'
   autoload :Entity,          'grape/entity'
   autoload :Cookies,         'grape/cookies'
+  autoload :Streaming,       'grape/streaming'
 
   module Middleware
     autoload :Base,      'grape/middleware/base'

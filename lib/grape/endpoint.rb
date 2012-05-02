@@ -8,6 +8,8 @@ module Grape
   # on the instance level of this class may be called
   # from inside a `get`, `post`, etc. block.
   class Endpoint
+    include Streaming
+
     attr_accessor :block, :options, :settings
     attr_reader :env, :request
 
@@ -244,12 +246,20 @@ module Grape
 
       self.extend helpers
       cookies.read(@request)
+
       run_filters befores
       response_text = instance_eval &self.block
-      run_filters afters
-      cookies.write(header)
-      
-      [status, header, [body || response_text]]
+
+      if streaming?
+        streaming_callback {run_filters afters}
+        streaming_response(env, status, header) do
+          cookies.write(header)
+        end
+      else
+        run_filters afters
+        cookies.write(header)
+        [status, header, [body || response_text]]
+      end
     end
 
     def build_middleware
