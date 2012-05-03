@@ -10,4 +10,6 @@ group :development, :test do
   gem 'rb-fsevent'
   gem 'growl'
   gem 'json'
+  gem 'faraday'
+  gem 'thin'
 end
