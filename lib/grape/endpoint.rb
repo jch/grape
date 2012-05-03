@@ -251,10 +251,9 @@ module Grape
       response_text = instance_eval &self.block
 
       if streaming?
+        cookies.write(header)
         streaming_callback {run_filters afters}
-        streaming_response(env, status, header) do
-          cookies.write(header)
-        end
+        streaming_response(env, status, header)
       else
         run_filters afters
         cookies.write(header)

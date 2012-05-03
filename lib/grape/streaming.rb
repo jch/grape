@@ -22,6 +22,8 @@ module Grape
   # Status and headers are sent immediately after endpoint is evaluated, values set in
   # post endpoint middleware will be ignored.
   module Streaming
+    class ClosedConnectionError < RuntimeError; end
+
     def streaming?
       # TODO: would prefer to pass in the endpoint instance and access through that
       options[:route_options][:stream]
@@ -29,19 +31,19 @@ module Grape
 
     # Declare a callback to run before connection is closed
     def streaming_callback(&blk)
-      @before_close_callback = blk
+      deferred_body.callback(&blk)
     end
 
-    # Returns a rack compatible response.
-    #
-    # @param blk [Block]
-    #   for non-streaming requests: block to evaluate for response
-    #   for streaming requests: block to eval before closing connection
+    # Schedules deferred rack response and immediately returns
+    # ASYNC_RESPONSE signaling response will be async.
     def streaming_response(env, status=200, headers={})
-      yield if block_given?
       EM.next_tick do
-        # bit leaky that we're assuming @env is defined
-        env['async.callback'].call [status, headers, deferred_body]
+        if callback = env['async.callback']
+          callback.call [status, headers, deferred_body]
+        else
+          $stderr.puts "missing async.callback. run within thin or rainbows"
+          # warn
+        end
       end
       ASYNC_RESPONSE
     end
@@ -57,9 +59,9 @@ module Grape
       close
     end
 
-    # Closes the connection, will flush remaining chunks to stream
+    # Closes the connection, after calling any callbacks defined by
+    # `streaming_callback` and flushing any remaining chunks to stream
     def close(flush = true)
-      deferred_body.callback(&@before_close_callback)
       EM.next_tick {
         deferred_body.succeed if !flush || deferred_body.empty?
       }
@@ -70,6 +72,10 @@ module Grape
       close(false)
     end
 
+    def closed?
+      deferred_body.closed?
+    end
+
     protected
 
     ASYNC_RESPONSE = [-1, {}, []].freeze
@@ -78,13 +84,18 @@ module Grape
     class DeferrableBody
       include EM::Deferrable
 
+      attr_reader :queue
+
       def initialize
-        @queue = []
+        @queue  = []
+        @closed = false
+        callback {@closed = true}
       end
 
       # Enqueue a chunk of content to be flushed to stream
       # at a later time.
       def chunk(body)
+        raise Grape::Streaming::ClosedConnectionError.new("Attempted to write to a closed connection") if closed?
         @queue << body
         schedule_dequeue
       end
@@ -100,6 +111,10 @@ module Grape
         @queue.empty?
       end
 
+      def closed?
+        @closed
+      end
+
       private
       def schedule_dequeue
         return unless @body_callback
@@ -108,7 +123,6 @@ module Grape
           body.each do |chunk|
             @body_callback.call(chunk)
           end
-          schedule_dequeue unless empty?
         end
       end
     end
