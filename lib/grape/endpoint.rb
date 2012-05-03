@@ -8,8 +8,6 @@ module Grape
   # on the instance level of this class may be called
   # from inside a `get`, `post`, etc. block.
   class Endpoint
-    include Streaming
-
     attr_accessor :block, :options, :settings
     attr_reader :env, :request
 
@@ -239,26 +237,80 @@ module Grape
 
     protected
 
+    module Runner
+      def find_handler(endpoint)
+        [EventSource, Chunked, Plain].detect {|r| r.can_handle?(endpoint)}
+      end
+      module_function :find_handler
+
+      class Plain
+        def self.can_handle?(endpoint)
+          true
+        end
+
+        def self.to_proc
+          Proc.new {
+            cookies.read(@request)
+            run_filters befores
+            response_text = instance_eval &self.block
+            run_filters afters
+            cookies.write(header)
+            [status, header, [body || response_text]]
+          }
+        end
+      end
+
+      class Chunked
+        def self.can_handle?(endpoint)
+          endpoint.options[:route_options][:stream]
+        end
+
+        # This feels awkward b/c we also have Streaming module
+        # Also weird to add methods at runtime rather than
+        # having a concrete subclass
+        def self.to_proc
+          Proc.new {
+            extend Streaming
+            cookies.read(@request)
+            run_filters befores
+            response_text = instance_eval &self.block
+            cookies.write(header)
+            streaming_callback {run_filters afters}
+            streaming_response(env, status, header)
+          }
+        end
+      end
+
+      # Certain runners can only be determined at runtime
+      require 'faye/websocket'
+      class EventSource
+        def self.can_handle?(endpoint)
+          Faye::EventSource.eventsource?(endpoint.env)
+        end
+
+        def self.to_proc
+          Proc.new {
+            es = Faye::EventSource.new(@env)
+
+            # would be nice if #body, #status, #header interface
+            # could be reused rather than defining custom ones
+
+            # like this request object encapsulation
+            es.rack_response
+          }
+        end
+      end
+    end
+
     def run(env)
       @env = env
       @header = {}
       @request = Rack::Request.new(@env)
 
       self.extend helpers
-      cookies.read(@request)
 
-      run_filters befores
-      response_text = instance_eval &self.block
-
-      if streaming?
-        cookies.write(header)
-        streaming_callback {run_filters afters}
-        streaming_response(env, status, header)
-      else
-        run_filters afters
-        cookies.write(header)
-        [status, header, [body || response_text]]
-      end
+      runner = Runner.find_handler(self)
+      instance_eval &runner
     end
 
     def build_middleware
