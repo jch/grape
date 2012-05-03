@@ -7,8 +7,8 @@ if ENV['SERVER']
       Faraday.new('http://localhost:9938').get '/stream'
     }
 
-    it 'should stream body' do
-      subject.body.should == 'ohai ohai kthxbye'
+    it 'should stream' do
+      subject.body.should == 'on caturday i iz sleepin in yr bed kthx kthxbye'
     end
 
     it 'should send chunked transfer encoding' do

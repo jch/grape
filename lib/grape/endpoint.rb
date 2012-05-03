@@ -275,7 +275,7 @@ module Grape
             run_filters befores
             response_text = instance_eval &self.block
             cookies.write(header)
-            streaming_callback {run_filters afters}
+            before_close {run_filters afters}
             streaming_response(env, status, header)
           }
         end

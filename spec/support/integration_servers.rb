@@ -4,13 +4,21 @@ require 'thin'
 
 module Integration
   class Streaming < Grape::API
+    before do
+      stream "on caturday "
+    end
+
+    after do
+      stream "kthxbye"
+    end
+
     get '/stream', :stream => true do
       status 202
       count = 0
-      EM.add_timer(0.1) {flush "ohai "}
-      EM.add_timer(0.2) {flush "ohai "}
+      EM.add_timer(0.1) {stream "i iz sleepin "}
+      EM.add_timer(0.2) {stream "in yr bed "}
       EM.add_timer(0.3) {
-        flush "kthxbye"
+        stream "kthx "
         close
       }
     end
