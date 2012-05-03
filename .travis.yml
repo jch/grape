@@ -13,3 +13,6 @@ rvm:
   - rbx
   - ree
 
+matrix:
+  allow_failures:
+    - rvm: jruby
