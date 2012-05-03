@@ -4,7 +4,7 @@ require 'thin'
 
 module Integration
   class Streaming < Grape::API
-    get '/stream', stream: true do
+    get '/stream', :stream => true do
       status 202
       count = 0
       EM.add_timer(0.1) {flush "ohai "}
